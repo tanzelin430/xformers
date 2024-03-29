@@ -1,0 +1,2 @@
+cgset -r memory.limit_in_bytes=68G xfms
+export MAX_JOBS=8
