@@ -22,7 +22,8 @@
 #include "autogen/cutlassF.h"
 #include "kernel_forward.h"
 #include "pytorch_utils.h"
-
+#include "../../../../../../libsmctrl/libsmctrl.h"
+#define MAX_TPC 42
 namespace {
 /*
   There are 2 modes for using this function.
@@ -48,13 +49,22 @@ efficient_attention_forward_cutlass(
     int64_t custom_mask_type,
     c10::optional<double> scale,
     const c10::optional<at::Tensor>& seqlen_k,
-    const c10::optional<int64_t> window_size) {
+    const c10::optional<int64_t> window_size,
+    int64_t ALLOCATED_TPC) {
 #ifdef XFORMERS_MEM_EFF_ATTENTION_DISABLE_FORWARD
   TORCH_CHECK(
       false,
       "MemoryEfficient build has been disabled at build time with -DXFORMERS_MEM_EFF_ATTENTION_DISABLE_FORWARD");
 #else
-
+  uint128_t tpc_ids = 0;
+  for (int i = 0; i < ALLOCATED_TPC; i++) {
+    tpc_ids |= (uint128_t)1 << i;
+  }
+  tpc_ids = ~tpc_ids;
+  if (ALLOCATED_TPC != MAX_TPC)
+  {
+    libsmctrl_set_next_mask(tpc_ids);
+  }
   TORCH_CHECK(query.dim() == 4);
   TORCH_CHECK(key.dim() == 4);
   TORCH_CHECK(value.dim() == 4);
