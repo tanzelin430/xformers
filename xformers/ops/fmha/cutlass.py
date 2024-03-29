@@ -185,7 +185,7 @@ class FwOp(AttentionFwOpBase):
     SUPPORTS_DIFFERENT_VALUE_EMBED = True
     SUPPORTS_BMGHK = True
     NAME = "cutlassF"
-
+    MAX_TPC = 42
     _TEST_K: List[int] = [
         32,  # 64x64 kernel
         128,  # 64x128 kernel
@@ -194,17 +194,18 @@ class FwOp(AttentionFwOpBase):
 
     @classmethod
     def apply(
-        cls, inp: Inputs, needs_gradient: bool
+        cls, inp: Inputs, needs_gradient: bool, allocated_tpc: Optional[int] = MAX_TPC
     ) -> Tuple[torch.Tensor, Optional[Context]]:
         if type(inp.attn_bias) not in FwOp.SUPPORTED_ATTN_BIAS_TYPES:
             raise NotImplementedError("Unsupported attn_bias type")
         if inp.query.ndim in [3, 4]:
-            return cls.apply_bmhk(inp, needs_gradient=needs_gradient)
+            return cls.apply_bmhk(inp, needs_gradient=needs_gradient, allocated_tpc=allocated_tpc)
         assert inp.query.ndim == 5, f"query has shape {inp.query.shape}"
         ctx: Optional[Context] = None
         # XXX: Hackfix for BMGHK with H=1
         # In that case we don't want to run G different streams because it adds
         # some overhead
+        print("applying")
         if inp.query.ndim == 5 and inp.query.shape[3] == 1:
             slice_op = partial(torch.squeeze, dim=3)
             inp = replace(
@@ -216,7 +217,7 @@ class FwOp(AttentionFwOpBase):
                     inp.attn_bias, partial(torch.squeeze, dim=2)
                 ),
             )
-            out, ctx = cls.apply_bmhk(inp, needs_gradient=needs_gradient)
+            out, ctx = cls.apply_bmhk(inp, needs_gradient=needs_gradient,allocated_tpc=allocated_tpc)
             out = out.unsqueeze(3)
             if ctx is not None:
                 ctx = replace(ctx, lse=ctx.lse.unsqueeze(1), out=out)
@@ -243,6 +244,7 @@ class FwOp(AttentionFwOpBase):
                     cls.apply_bmhk(
                         replace(inp, query=query, key=key, value=value, attn_bias=bias),
                         needs_gradient=needs_gradient,
+                        allocated_tpc=allocated_tpc,
                     )
                 )
         for s in streams[1:]:
@@ -258,7 +260,7 @@ class FwOp(AttentionFwOpBase):
 
     @classmethod
     def apply_bmhk(
-        cls, inp: Inputs, needs_gradient: bool
+        cls, inp: Inputs, needs_gradient: bool, allocated_tpc: int
     ) -> Tuple[torch.Tensor, Optional[Context]]:
         if type(inp.attn_bias) not in FwOp.SUPPORTED_ATTN_BIAS_TYPES:
             raise NotImplementedError("Unsupported attn_bias type")
@@ -288,6 +290,7 @@ class FwOp(AttentionFwOpBase):
                 ),
             )
             else None,
+            ALLOCATED_TPC=allocated_tpc,
         )
         ctx: Optional[Context] = None
         if needs_gradient:

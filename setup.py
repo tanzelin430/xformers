@@ -125,48 +125,46 @@ def get_flash_attention_extensions(cuda_version: int, extra_compile_args):
     if platform.system() != "Linux" and cuda_version < 1200:
         return []
     # Figure out default archs to target
-    # DEFAULT_ARCHS_LIST = ""
-    # if cuda_version >= 1108:
-    #     DEFAULT_ARCHS_LIST = "8.0;8.6;9.0"
-    # elif cuda_version > 1100:
-    #     DEFAULT_ARCHS_LIST = "8.0;8.6"
-    # elif cuda_version == 1100:
-    #     DEFAULT_ARCHS_LIST = "8.0"
-    # else:
-    #     return []
+    DEFAULT_ARCHS_LIST = ""
+    if cuda_version >= 1108:
+        DEFAULT_ARCHS_LIST = "8.0;8.6;9.0"
+    elif cuda_version > 1100:
+        DEFAULT_ARCHS_LIST = "8.0;8.6"
+    elif cuda_version == 1100:
+        DEFAULT_ARCHS_LIST = "8.0"
+    else:
+        return []
 
-    # if os.getenv("XFORMERS_DISABLE_FLASH_ATTN", "0") != "0":
-    #     return []
+    if os.getenv("XFORMERS_DISABLE_FLASH_ATTN", "0") != "0":
+        return []
 
-    # # Supports `9.0`, `9.0+PTX`, `9.0a+PTX` etc...
-    # PARSE_CUDA_ARCH_RE = re.compile(
-    #     r"(?P<major>[0-9]+)\.(?P<minor>[0-9])(?P<suffix>[a-zA-Z]{0,1})(?P<ptx>\+PTX){0,1}"
-    # )
-    # archs_list = os.environ.get("TORCH_CUDA_ARCH_LIST", DEFAULT_ARCHS_LIST)
+    # Supports `9.0`, `9.0+PTX`, `9.0a+PTX` etc...
+    PARSE_CUDA_ARCH_RE = re.compile(
+        r"(?P<major>[0-9]+)\.(?P<minor>[0-9])(?P<suffix>[a-zA-Z]{0,1})(?P<ptx>\+PTX){0,1}"
+    )
+    archs_list = os.environ.get("TORCH_CUDA_ARCH_LIST", DEFAULT_ARCHS_LIST)
     nvcc_archs_flags = []
-    # for arch in archs_list.replace(" ", ";").split(";"):
-    #     match = PARSE_CUDA_ARCH_RE.match(arch)
-    #     assert match is not None, f"Invalid sm version: {arch}"
-    #     num = 10 * int(match.group("major")) + int(match.group("minor"))
-    #     # Need at least Sm80
-    #     if num < 80:
-    #         continue
-    #     # Sm90 requires nvcc 11.8+
-    #     if num >= 90 and cuda_version < 1108:
-    #         continue
-    #     suffix = match.group("suffix")
-    #     nvcc_archs_flags.append(
-    #         f"-gencode=arch=compute_{num}{suffix},code=sm_{num}{suffix}"
-    #     )
-    #     if match.group("ptx") is not None:
-    #         nvcc_archs_flags.append(
-    #             f"-gencode=arch=compute_{num}{suffix},code=compute_{num}{suffix}"
-    #         )
-    # if not nvcc_archs_flags:
-    #     return []
-    nvcc_archs_flags.append(
-            "-gencode=arch=compute_70,code=sm_70"
+    for arch in archs_list.replace(" ", ";").split(";"):
+        match = PARSE_CUDA_ARCH_RE.match(arch)
+        assert match is not None, f"Invalid sm version: {arch}"
+        num = 10 * int(match.group("major")) + int(match.group("minor"))
+        # Need at least Sm80
+        if num < 80:
+            continue
+        # Sm90 requires nvcc 11.8+
+        if num >= 90 and cuda_version < 1108:
+            continue
+        suffix = match.group("suffix")
+        nvcc_archs_flags.append(
+            f"-gencode=arch=compute_{num}{suffix},code=sm_{num}{suffix}"
         )
+        if match.group("ptx") is not None:
+            nvcc_archs_flags.append(
+                f"-gencode=arch=compute_{num}{suffix},code=compute_{num}{suffix}"
+            )
+    if not nvcc_archs_flags:
+        return []
+
     nvcc_windows_flags = []
     if platform.system() == "Windows":
         nvcc_windows_flags = ["-Xcompiler", "/permissive-"]
@@ -267,7 +265,6 @@ def get_extensions():
             "-L/workspace/vllm/libsmctrl",
             "-l:libsmctrl.a",
             "-std=c++17",
-            "-gencode=arch=compute_70,code=sm_70",
         ] + get_extra_nvcc_flags_for_build_type()
         if os.getenv("XFORMERS_ENABLE_DEBUG_ASSERTIONS", "0") != "1":
             nvcc_flags.append("-DNDEBUG")
@@ -302,7 +299,6 @@ def get_extensions():
             # See https://github.com/facebookresearch/xformers/issues/712
             "--ptxas-options=-O2",
             "--ptxas-options=-allow-expensive-optimizations=true",
-            
         ]
 
     ext_modules.append(

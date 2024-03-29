@@ -30,7 +30,7 @@ MemoryEfficientAttentionFlashAttentionOp = (flash.FwOp, flash.BwOp)
 MemoryEfficientAttentionOp = (small_k.FwOp, small_k.BwOp)
 TritonFlashAttentionOp = (triton.FwOp, triton.BwOp)
 
-
+MAX_TPC = 42
 class _fMHA(torch.autograd.Function):
     @staticmethod
     # type: ignore
@@ -237,6 +237,7 @@ def memory_efficient_attention_forward(
     scale: Optional[float] = None,
     *,
     op: Optional[Type[AttentionFwOpBase]] = None,
+    allocated_tpc: Optional[int] = MAX_TPC,
 ) -> torch.Tensor:
     """
     Calculates the forward pass of :attr:`xformers.ops.memory_efficient_attention`.
@@ -246,6 +247,7 @@ def memory_efficient_attention_forward(
             query=query, key=key, value=value, p=p, attn_bias=attn_bias, scale=scale
         ),
         op=op,
+        allocated_tpc=allocated_tpc,
     )
 
 
@@ -329,7 +331,7 @@ def _memory_efficient_attention(
 
 
 def _memory_efficient_attention_forward(
-    inp: Inputs, op: Optional[Type[AttentionFwOpBase]]
+    inp: Inputs, op: Optional[Type[AttentionFwOpBase]], allocated_tpc: Optional[int] = MAX_TPC
 ) -> torch.Tensor:
     inp.validate_inputs()
     output_shape = inp.normalize_bmhk()
@@ -338,7 +340,7 @@ def _memory_efficient_attention_forward(
     else:
         _ensure_op_supports_or_raise(ValueError, "memory_efficient_attention", op, inp)
 
-    out, *_ = op.apply(inp, needs_gradient=False)
+    out, *_ = op.apply(inp, needs_gradient=False, allocated_tpc=allocated_tpc)
     return out.reshape(output_shape)
 
 
